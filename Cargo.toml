@@ -1,0 +1,31 @@
+[package]
+name = "umsbank"
+version = "0.1.0"
+authors = ["armoha <kein0011@naver.com>"]
+license = "MIT/Apache-2.0"
+edition = "2018"
+build = "src/build.rs"
+
+[dependencies]
+winapi = { version = "^0.3", features = ["std", "everything"] }
+kernel32-sys = "0.2.2"
+libc = { version = "^0.2", features = ["use_std", "extra_traits"] }
+getset = "^0.0"
+failure = "^0.1"
+ggez = "0.5.0-rc.2"
+gfx = "0.18"
+cgmath = {version = "0.17", features = ["mint"]}
+flate2 = "1.0"
+image = {version = "0.21", default-features = false, features = ["gif_codec", "jpeg", "ico", "png_codec", "pnm",
+         "tga", "tiff", "webp", "bmp", "dxt", ] }
+webbrowser = "0.5.1"
+fluent = "0.6.0"
+fluent-bundle = "^0.6"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.9"
+
+[package.metadata.winres]
+OriginalFilename = "umsbank.exe"
+LegalCopyright = "Copyright © 2019"
+FileDescription = "umsbank Launcher"
