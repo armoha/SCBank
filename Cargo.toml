@@ -1,5 +1,5 @@
 [package]
-name = "umsbank"
+name = "SCBank"
 version = "0.1.0"
 authors = ["armoha <kein0011@naver.com>"]
 license = "MIT/Apache-2.0"
@@ -21,11 +21,26 @@ image = {version = "0.21", default-features = false, features = ["gif_codec", "j
 webbrowser = "0.5.1"
 fluent = "0.6.0"
 fluent-bundle = "^0.6"
+self_update = "0.5.1"
+ring = "0.14.6"
+ntp = "0.5"
+time = "0.1.42"
+
+[build-dependencies]
+failure = "^0.1"
+flate2 = "1.0"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.9"
 
 [package.metadata.winres]
-OriginalFilename = "umsbank.exe"
+OriginalFilename = "SCBank.exe"
 LegalCopyright = "Copyright © 2019"
-FileDescription = "umsbank Launcher"
+FileDescription = "SCBank Launcher"
+
+[profile.release]
+opt-level = 'z'  # Optimize for size.
+lto = true
+codegen-units = 1
+panic = 'abort'
+debug=0

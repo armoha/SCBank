@@ -1,122 +1,140 @@
 #![windows_subsystem = "windows"]
-mod mem_lib;
-use std::env;
-use std::io;
-use std::path;
+
+use std::{
+    collections::hash_map::RandomState,
+    collections::HashMap,
+    env,
+    f32,
+    io,
+    mem,
+    path,
+};
 
 use cgmath;
 use fluent_bundle::{FluentBundle, FluentResource};
-use ggez::event::{self, Axis, Button, GamepadId, KeyCode, KeyMods, MouseButton};
-use ggez::graphics::{self, Align, Color, DrawParam, Font, Scale, Text, TextFragment};
-use ggez::*;
-use image;
-use std::collections::hash_map::RandomState;
-use std::collections::HashMap;
-use std::f32;
+use ggez::{
+    *,
+    audio::SoundSource,
+    event::{self, MouseButton},
+    graphics::{self, Align, Color, Font, Text},
+};
 use webbrowser;
+
+mod mem_lib;
+mod get_time;
+mod asset;
+// mod scr;
+
+const BUFFER_PTR: u32 = 0xBFD6E8;
 
 #[derive(PartialEq)]
 enum SCState {
     FindingProcess,
     FindingModule,
-    FailToReadMem,
-    FindingUmsbankMap,
+    FindingSCBankMap,
+    RequestFilename,
+    CheckingLatestVersion,
+}
+
+enum TextColor {
+    Green,
+    LightBlue,
+    Tan,
 }
 
 struct MainState<'a> {
-    font: graphics::Font,
+    font: Font,
     mouse_down: bool,
     pos_x: f32,
     pos_y: f32,
     locale: &'a str,
     fluent_bundles: HashMap<&'a str, FluentBundle<'a>, RandomState>,
-    assets: Assets,
+    assets: asset::Assets,
     state: SCState,
     wait: u8,
-}
-struct Assets {
-    background_image: graphics::Image,
-    update_button: graphics::Image,
-    language_button: graphics::Image,
-    homepage_button: graphics::Image,
-    folder_button: graphics::Image,
-    hover_button: graphics::Image,
-}
-
-impl Assets {
-    fn new(ctx: &mut Context) -> GameResult<Assets> {
-        // TODO: compress assets in binary
-        let background = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/bc2017console.jpg"
-        )))?
-        .to_rgba();
-        let (width, height) = background.dimensions();
-        let background_image =
-            graphics::Image::from_rgba8(ctx, width as u16, height as u16, &background)?;
-
-        let update = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/update.png"
-        )))?
-        .to_rgba();
-        let (width, height) = update.dimensions();
-        let update_button = graphics::Image::from_rgba8(ctx, width as u16, height as u16, &update)?;
-
-        let language = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/language.png"
-        )))?
-        .to_rgba();
-        let (width, height) = language.dimensions();
-        let language_button =
-            graphics::Image::from_rgba8(ctx, width as u16, height as u16, &language)?;
-
-        let homepage = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/homepage.jpg"
-        )))?
-        .to_rgba();
-        let (width, height) = homepage.dimensions();
-        let homepage_button =
-            graphics::Image::from_rgba8(ctx, width as u16, height as u16, &homepage)?;
-
-        let folder = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/folder.png"
-        )))?
-        .to_rgba();
-        let (width, height) = folder.dimensions();
-        let folder_button = graphics::Image::from_rgba8(ctx, width as u16, height as u16, &folder)?;
-
-        let hover = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/hover.png"
-        )))?
-        .to_rgba();
-        let (width, height) = hover.dimensions();
-        let hover_button = graphics::Image::from_rgba8(ctx, width as u16, height as u16, &hover)?;
-
-        Ok(Assets {
-            background_image,
-            update_button,
-            language_button,
-            homepage_button,
-            folder_button,
-            hover_button,
-        })
-    }
+    process: mem_lib::GameProcess,
+    module: mem_lib::Module,
 }
 
 impl<'a> MainState<'a> {
     pub fn get_text(&self, id: &str) -> String {
-        let (value, errors) = self
+        let (value, _errors) = self
             .fluent_bundles
             .get(self.locale)
             .unwrap()
             .format(id, None)
             .expect("Failed to format a message.");
         value
+    }
+
+    pub fn update_app(&mut self) -> Result<(), Box<::std::error::Error>> {
+        use self_update::{self, cargo_crate_version};
+        let mut state = SCState::CheckingLatestVersion;
+        mem::swap(&mut self.state, &mut state);
+        let target = self_update::get_target()?;
+        let releases = self_update::backends::github::ReleaseList::configure()
+            .repo_owner("armoha")
+            .repo_name("SCBank")
+            .with_target(&target)
+            .build()?
+            .fetch()?;
+        println!("found releases:");
+        println!("{:#?}\n", releases);
+
+        let status = self_update::backends::github::Update::configure()?
+            .repo_owner("armoha")
+            .repo_name("SCBank")
+            .target(&target)
+            .bin_name("SCBank.exe")
+            .show_download_progress(true)
+            .current_version(cargo_crate_version!())
+            .build()?
+            .update()?;
+        println!("Update status: `{}`!", status.version());
+        Ok(())
+    }
+
+    pub fn get_sc_proc(&mut self) -> SCState {
+        self.process = match mem_lib::get_proc_by_name("StarCraft.exe") {
+            Ok(proc) => proc,
+            Err(_) => {
+                self.wait = 127;
+                return SCState::FindingProcess;
+            }
+        };
+        SCState::FindingModule
+    }
+
+    pub fn get_sc_module(&mut self) -> SCState {
+        self.module = match self.process.get_module("StarCraft.exe") {
+            Ok(module) => module,
+            Err(_) => {
+                return SCState::FindingProcess;
+            }
+        };
+        SCState::FindingSCBankMap
+    }
+
+    pub fn check_scbank_map(&mut self) -> SCState {
+        match self.module.read::<u32>(BUFFER_PTR + 212, &self.process) {
+            Ok(value) => {
+                if value == 0x5537F23B {
+                    return SCState::RequestFilename;
+                }
+                SCState::FindingSCBankMap
+            }
+            Err(_) => SCState::FindingProcess,
+        }
+    }
+}
+
+trait InRange {
+    fn in_range(&self, begin: Self, end: Self) -> bool;
+}
+
+impl InRange for f32 {
+    fn in_range(&self, begin: f32, end: f32) -> bool {
+        *self >= begin && *self < end
     }
 }
 
@@ -126,36 +144,18 @@ impl<'a> event::EventHandler for MainState<'a> {
             self.wait -= 1;
             return Ok(());
         }
-        // TODO: reduce winapi calls
-        let proc = match mem_lib::get_proc_by_name("StarCraft.exe") {
-            Ok(proc) => proc,
-            Err(_) => {
-                self.state = SCState::FindingProcess;
-                self.wait = 127;
-                return Ok(());
-            }
+        self.state = match self.state {
+            SCState::FindingProcess => self.get_sc_proc(),
+            SCState::FindingModule => self.get_sc_module(),
+            SCState::FindingSCBankMap => self.check_scbank_map(),
+            SCState::RequestFilename => return Ok(()),
+            _ => SCState::FindingProcess,
         };
-        let mut module = match proc.get_module("StarCraft.exe") {
-            Ok(module) => module,
-            Err(_) => {
-                self.state = SCState::FindingModule;
-                return Ok(());
-            }
-        };
-        let use_umsbank = match module.read::<u32>(0xC04E28 + 212, &proc) {
-            Ok(value) => value,
-            Err(_) => {
-                self.state = SCState::FailToReadMem;
-                return Ok(());
-            }
-        };
-        if use_umsbank != 0x5537F23B {
-            self.state = SCState::FindingUmsbankMap;
-            return Ok(());
-        }
+        /*
         module
             .write::<u32>(&proc, 0xC04E28 + 212, 0x12341234)
             .unwrap();
+        */
         Ok(())
     }
 
@@ -186,10 +186,10 @@ impl<'a> event::EventHandler for MainState<'a> {
 
         if self.pos_y >= 22.0 && self.pos_y <= 42.0 {
             let dst = match self.pos_x {
-                128.0...148.0 => Some(("update", 128.0)),
-                149.0...169.0 => Some(("change_language", 149.0)),
-                170.0...190.0 => Some(("homepage", 170.0)),
-                191.0...211.0 => Some(("open_folder", 191.0)),
+                x if x.in_range(128.0, 148.0) => Some(("update", 128.0)),
+                x if x.in_range(149.0, 169.0) => Some(("change_language", 149.0)),
+                x if x.in_range(170.0, 190.0) => Some(("homepage", 170.0)),
+                x if x.in_range(191.0, 211.0) => Some(("open_folder", 191.0)),
                 _ => None,
             };
             match dst {
@@ -197,9 +197,9 @@ impl<'a> event::EventHandler for MainState<'a> {
                     let hover = &mut assets.hover_button;
                     let dst = cgmath::Point2::new(p, 22.0);
                     graphics::draw(ctx, hover, (dst,))?;
-                    let green = graphics::Color::new(0.03, 0.9, 0.03, 1.0);
+                    let green = Color::new(0.03, 0.9, 0.03, 1.0);
                     let text = self.get_text(text);
-                    let mut text = graphics::Text::new((text, self.font, 12.0));
+                    let mut text = Text::new((text, self.font, 12.0));
                     let txtdst = cgmath::Point2::new(332.0, 25.0);
                     text.set_bounds(cgmath::Point2::new(70.0, f32::INFINITY), Align::Center);
                     graphics::draw(ctx, &text, (txtdst, green))?;
@@ -209,21 +209,25 @@ impl<'a> event::EventHandler for MainState<'a> {
         }
 
         let text = match self.state {
-            SCState::FindingProcess => Some("waiting_sc_process"),
-            SCState::FindingModule => Some("waiting_sc_module"),
-            SCState::FailToReadMem => Some("fail_to_read_memory"),
-            SCState::FindingUmsbankMap => Some("waiting_map_using_umsbank"),
+            SCState::FindingProcess => Some(("waiting_sc_process", TextColor::LightBlue)),
+            SCState::FindingModule => Some(("waiting_sc_module", TextColor::LightBlue)),
+            SCState::FindingSCBankMap => Some(("waiting_map_using_scbank", TextColor::LightBlue)),
+            SCState::RequestFilename => Some(("request_save_file_name", TextColor::LightBlue)),
+            SCState::CheckingLatestVersion => Some(("check_latest", TextColor::Tan)),
             _ => None,
         };
         match text {
-            Some(text) => {
+            Some((text, color)) => {
                 let text = self.get_text(text);
-                let mut text = graphics::Text::new((text, self.font, 40.0));
+                let mut text = Text::new((text, self.font, 40.0));
                 let txtdst = cgmath::Point2::new(24.0, 68.0);
                 text.set_bounds(cgmath::Point2::new(432.0, f32::INFINITY), Align::Center);
-                // let green = graphics::Color::new(0.03, 0.9, 0.03, 1.0);
-                let light_blue = graphics::Color::new(0.71875, 0.71875, 0.90234375, 1.0);
-                graphics::draw(ctx, &text, (txtdst, light_blue))?;
+                let color = match color {
+                    TextColor::Green => Color::new(0.03, 0.9, 0.03, 1.0),
+                    TextColor::LightBlue => Color::new(0.71875, 0.71875, 0.90234375, 1.0),
+                    _ => Color::new(1., 1., 1., 1.),
+                };
+                graphics::draw(ctx, &text, (txtdst, color))?;
             }
             None => (),
         }
@@ -232,25 +236,36 @@ impl<'a> event::EventHandler for MainState<'a> {
         Ok(())
     }
 
-    fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+    fn mouse_button_down_event(
+        &mut self,
+        _ctx: &mut Context,
+        _button: MouseButton,
+        x: f32,
+        y: f32,
+    ) {
         self.mouse_down = true;
-        if self.pos_y >= 22.0 && self.pos_y <= 42.0 {
-            match self.pos_x {
-                128.0...148.0 => {
-                    // TODO: Implement (Auto)Update
-                    println!("Update is not implemented yet!");
+        if y >= 22.0 && y <= 42.0 && x >= 128.0 && x <= 211.0 {
+            match x {
+                x if x < 148.0 => {
+                    // TODO: Implement AutoUpdate
+                    self.assets.mousedown_sound.play_detached().unwrap();
+                    self.update_app().unwrap();
                 }
-                149.0...169.0 => {
+                x if x.in_range(149.0, 169.0) => {
+                    self.assets.mousedown_sound.play_detached().unwrap();
                     self.locale = match self.locale {
                         "ko-KR" => "en-US",
-                        "en-US" => "ko-KR",
+                        "en-US" => "zh-CN",
+                        "zh-CN" => "ko-KR",
                         _ => "en-US",
                     }
                 }
-                170.0...190.0 => {
+                x if x.in_range(170.0, 190.0) => {
+                    self.assets.mousedown_sound.play_detached().unwrap();
                     webbrowser::open("http://blog.naver.com/kein0011").unwrap();
                 }
-                191.0...211.0 => {
+                x if x.in_range(191.0, 211.0) => {
+                    self.assets.mousedown_sound.play_detached().unwrap();
                     #[cfg(not(windows))]
                     fn open_browser(path: &path::Path) -> io::Result<bool> {
                         use std::process::{Command, Stdio};
@@ -325,11 +340,17 @@ impl<'a> event::EventHandler for MainState<'a> {
         }
     }
 
-    fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+    fn mouse_button_up_event(
+        &mut self,
+        _ctx: &mut Context,
+        _button: MouseButton,
+        _x: f32,
+        _y: f32,
+    ) {
         self.mouse_down = false;
     }
 
-    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, xrel: f32, yrel: f32) {
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _xrel: f32, _yrel: f32) {
         self.pos_x = x;
         self.pos_y = y;
     }
@@ -337,45 +358,59 @@ impl<'a> event::EventHandler for MainState<'a> {
 
 pub fn main() -> GameResult {
     let resource_dir = path::PathBuf::from("./resources");
-    let cb = ContextBuilder::new("umsbank", "Armoha")
+    let cb = ContextBuilder::new("SCBank", "Armoha")
         .window_setup(conf::WindowSetup::default().title(&format!(
-            "umsbank {} (SC:R 1.22.3.5482)",
+            "SCBank {} (SC:R 1.22.4.5905)",
             env!("CARGO_PKG_VERSION")
         )))
         .window_mode(conf::WindowMode::default().dimensions(480.0, 224.0))
         .add_resource_path(resource_dir);
     let (ctx, event_loop) = &mut cb.build()?;
 
-    use std::fs;
-    let mut path = env::current_dir().unwrap();
-    path.push("resources");
-    path.push("ko-KR.ftl");
-    let ftl_string = fs::read_to_string(&path).expect("Fail to parse .ftl file.");
+    let ftl_string = asset::decode_string(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/cmp/ko-KR.ftl"
+    )))?;
     let res = FluentResource::try_new(ftl_string).expect("Could not parse an FTL string.");
     let mut ko_kr_bundle = FluentBundle::new(&["ko-KR"]);
     ko_kr_bundle
         .add_resource(&res)
         .expect("Failed to add FTL resources to the bundle.");
-    path.pop();
-    path.push("en-US.ftl");
-    let ftl_string = fs::read_to_string(&path).expect("Fail to parse .ftl file.");
+
+    let ftl_string = asset::decode_string(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/cmp/en-US.ftl"
+    )))?;
     let res = FluentResource::try_new(ftl_string).expect("Could not parse an FTL string.");
     let mut en_us_bundle = FluentBundle::new(&["en-US"]);
     en_us_bundle
         .add_resource(&res)
         .expect("Failed to add FTL resources to the bundle.");
 
+    let ftl_string = asset::decode_string(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/cmp/zh-CN.ftl"
+    )))?;
+    let res = FluentResource::try_new(ftl_string).expect("Could not parse an FTL string.");
+    let mut zh_cn_bundle = FluentBundle::new(&["zh-CN"]);
+    zh_cn_bundle
+        .add_resource(&res)
+        .expect("Failed to add FTL resources to the bundle.");
+
     let mut fluent_bundles = HashMap::new();
     fluent_bundles.insert("ko-KR", ko_kr_bundle);
     fluent_bundles.insert("en-US", en_us_bundle);
-    /*
-    let (value, errors) = bundle.format(id, None)
-        .expect("Failed to format a message.");
-    value*/
+    fluent_bundles.insert("zh-CN", zh_cn_bundle);
 
-    let font = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/bl.ttf"));
-    let font = graphics::Font::new_glyph_font_bytes(ctx, font).unwrap_or_default();
-    let assets = Assets::new(ctx)?;
+    let font = asset::decode_reader(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/cmp/bl.ttf"
+    )))
+        .unwrap();
+    let font = Font::new_glyph_font_bytes(ctx, &font).unwrap_or_default();
+    let assets = asset::Assets::new(ctx)?;
+    let proc = mem_lib::GameProcess::current_process();
+    let module = proc.get_module("SCBank.exe").unwrap();
 
     let state = &mut MainState {
         font,
@@ -387,6 +422,8 @@ pub fn main() -> GameResult {
         assets: assets,
         state: SCState::FindingProcess,
         wait: 0,
+        process: proc,
+        module: module,
     };
     event::run(ctx, event_loop, state)
 }

@@ -1,8 +1,12 @@
 // source: https://www.unknowncheats.me/forum/general-programming-and-reversing/330583-pure-rust-injectable-dll.html
 extern crate kernel32;
 extern crate winapi;
-use getset::Getters;
+
 use std::{ffi::OsString, mem, os::windows::ffi::OsStringExt};
+use std::result::Result as StdResult;
+
+use failure::{Error as FError, Fail};
+use getset::Getters;
 use winapi::um::{handleapi, memoryapi, processthreadsapi, tlhelp32, winnt};
 
 #[derive(Getters)]
@@ -12,15 +16,12 @@ pub struct GameProcess {
     pid: u32,
 }
 
-#[derive(Getters)]
+#[derive(Getters, Default)]
 #[get = "pub"]
 pub struct Module {
     base: u32,
     size: u32,
 }
-
-use failure::{Error as FError, Fail};
-use std::result::Result as StdResult;
 
 pub type Result<T> = StdResult<T, FError>;
 
@@ -52,7 +53,7 @@ impl GameProcess {
         GameProcess { handle, pid }
     }
 
-    pub fn read_memory(&self, address: u32) -> Result<u32> {
+    /*pub fn read_memory(&self, address: u32) -> Result<u32> {
         let mut read = unsafe { mem::uninitialized() };
         let mut amount_read: libc::size_t = 0;
 
@@ -72,7 +73,7 @@ impl GameProcess {
         }
 
         Ok(read)
-    }
+    }*/
 
     pub fn get_module(&self, module_name: &str) -> Result<Module> {
         let module =
@@ -97,10 +98,10 @@ impl GameProcess {
             if name.contains(module_name) {
                 unsafe { handleapi::CloseHandle(module) };
 
-                println!(
+                /*println!(
                     "Base address of {}: 0x{:X} @ size of 0x{:X}",
                     module_name, entry.modBaseAddr as u32, entry.modBaseSize
-                );
+                );*/
 
                 return Ok(Module {
                     base: entry.modBaseAddr as _,
@@ -144,10 +145,10 @@ pub fn get_proc_by_name(name: &str) -> Result<GameProcess> {
                     }
                 }
                 Err(_) => {
-                    println!(
+                    /*println!(
                         "Error converting process name for PID {}",
                         process.th32ProcessID
-                    );
+                    );*/
                 }
             }
         }
@@ -168,7 +169,7 @@ impl Module {
                 mem::size_of::<T>() as _,
                 &mut amount_read as *mut _,
             )
-        } != (true as _)
+        } != (true as i32)
             || amount_read == 0
         {
             mem::forget(read);

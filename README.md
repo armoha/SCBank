@@ -1,4 +1,4 @@
-# umsbank
+# SCBank
 
 Local game saves for StarCraft: Remastered EUD maps
 
