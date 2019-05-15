@@ -1,5 +1,3 @@
-#![windows_subsystem = "windows"]
-
 use std::{
     collections::hash_map::RandomState,
     collections::HashMap,
@@ -116,6 +114,7 @@ impl<'a> MainState<'a> {
     }
 
     pub fn check_scbank_map(&mut self) -> SCState {
+        self.module.write::<u32>(&self.process, 0xC35B80, 0).unwrap();
         match self.module.read::<u32>(BUFFER_PTR + 212, &self.process) {
             Ok(value) => {
                 if value == 0x5537F23B {
@@ -151,11 +150,7 @@ impl<'a> event::EventHandler for MainState<'a> {
             SCState::RequestFilename => return Ok(()),
             _ => SCState::FindingProcess,
         };
-        /*
-        module
-            .write::<u32>(&proc, 0xC04E28 + 212, 0x12341234)
-            .unwrap();
-        */
+
         Ok(())
     }
 
@@ -360,7 +355,7 @@ pub fn main() -> GameResult {
     let resource_dir = path::PathBuf::from("./resources");
     let cb = ContextBuilder::new("SCBank", "Armoha")
         .window_setup(conf::WindowSetup::default().title(&format!(
-            "SCBank {} (SC:R 1.22.4.5905)",
+            "SCBank {} (StarCraft: Remastered 1.22.4.5905)",
             env!("CARGO_PKG_VERSION")
         )))
         .window_mode(conf::WindowMode::default().dimensions(480.0, 224.0))
@@ -411,6 +406,8 @@ pub fn main() -> GameResult {
     let assets = asset::Assets::new(ctx)?;
     let proc = mem_lib::GameProcess::current_process();
     let module = proc.get_module("SCBank.exe").unwrap();
+
+    // println!("{}", get_time::get_utc_tm());
 
     let state = &mut MainState {
         font,
