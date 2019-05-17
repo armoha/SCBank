@@ -3,6 +3,7 @@ use std::io::{self, prelude::*};
 use flate2::bufread::ZlibDecoder;
 use ggez::{*, audio, graphics};
 use image;
+use winit;
 
 pub struct Assets {
     pub background_image: graphics::Image,
@@ -28,11 +29,22 @@ pub fn decode_string(bytes: &[u8]) -> io::Result<String> {
     Ok(s)
 }
 
+pub fn load_icon() -> GameResult<Option<winit::Icon>> {
+    let icon = decode_reader(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/resources/cmp/defaultLogo.jpg"
+        )))?;
+    let icon = image::load_from_memory(&icon)?.to_rgba();
+    let (width, height) = icon.dimensions();
+
+    Ok(Some(winit::Icon::from_rgba(icon.to_vec(), width, height).unwrap()))
+}
+
 impl Assets {
     pub fn new(ctx: &mut Context) -> GameResult<Assets> {
         let background = decode_reader(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/resources/cmp/bc2017console.jpg"
+            "/resources/cmp/bc2017console.png"
         )))?;
         let background = image::load_from_memory(&background)?.to_rgba();
         let (width, height) = background.dimensions();

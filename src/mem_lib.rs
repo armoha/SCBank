@@ -1,8 +1,5 @@
-// source: https://www.unknowncheats.me/forum/general-programming-and-reversing/330583-pure-rust-injectable-dll.html
-extern crate kernel32;
-extern crate winapi;
-
 use std::{ffi::OsString, mem, os::windows::ffi::OsStringExt};
+// source: https://www.unknowncheats.me/forum/general-programming-and-reversing/330583-pure-rust-injectable-dll.html
 use std::result::Result as StdResult;
 
 use failure::{Error as FError, Fail};
@@ -132,7 +129,7 @@ pub fn get_proc_by_name(name: &str) -> Result<GameProcess> {
                     if s.contains(name) {
                         return Ok(GameProcess {
                             handle: unsafe {
-                                kernel32::OpenProcess(
+                                processthreadsapi::OpenProcess(
                                     winnt::PROCESS_VM_READ
                                         | winnt::PROCESS_VM_OPERATION
                                         | winnt::PROCESS_VM_WRITE,
@@ -145,10 +142,10 @@ pub fn get_proc_by_name(name: &str) -> Result<GameProcess> {
                     }
                 }
                 Err(_) => {
-                    /*println!(
+                    println!(
                         "Error converting process name for PID {}",
                         process.th32ProcessID
-                    );*/
+                    );
                 }
             }
         }

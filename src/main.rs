@@ -1,12 +1,6 @@
-use std::{
-    collections::hash_map::RandomState,
-    collections::HashMap,
-    env,
-    f32,
-    io,
-    mem,
-    path,
-};
+#![windows_subsystem = "windows"]
+
+use std::{collections::hash_map::RandomState, collections::HashMap, env, f32, io, mem, path};
 
 use cgmath;
 use fluent_bundle::{FluentBundle, FluentResource};
@@ -18,11 +12,12 @@ use ggez::{
 };
 use webbrowser;
 
-mod mem_lib;
-mod get_time;
 mod asset;
+mod get_time;
+mod mem_lib;
 // mod scr;
 
+const STARCRAFT_VERSION: &str = "1.22.4.5993";
 const BUFFER_PTR: u32 = 0xBFD6E8;
 
 #[derive(PartialEq)]
@@ -40,11 +35,16 @@ enum TextColor {
     Tan,
 }
 
+struct MouseInfo {
+    button: MouseButton,
+    down: bool,
+    x: f32,
+    y: f32,
+}
+
 struct MainState<'a> {
     font: Font,
-    mouse_down: bool,
-    pos_x: f32,
-    pos_y: f32,
+    mouse_info: MouseInfo,
     locale: &'a str,
     fluent_bundles: HashMap<&'a str, FluentBundle<'a>, RandomState>,
     assets: asset::Assets,
@@ -70,16 +70,14 @@ impl<'a> MainState<'a> {
         let mut state = SCState::CheckingLatestVersion;
         mem::swap(&mut self.state, &mut state);
         let target = self_update::get_target()?;
-        let releases = self_update::backends::github::ReleaseList::configure()
+        let _releases = self_update::backends::github::ReleaseList::configure()
             .repo_owner("armoha")
             .repo_name("SCBank")
             .with_target(&target)
             .build()?
             .fetch()?;
-        println!("found releases:");
-        println!("{:#?}\n", releases);
 
-        let status = self_update::backends::github::Update::configure()?
+        let _status = self_update::backends::github::Update::configure()?
             .repo_owner("armoha")
             .repo_name("SCBank")
             .target(&target)
@@ -88,7 +86,7 @@ impl<'a> MainState<'a> {
             .current_version(cargo_crate_version!())
             .build()?
             .update()?;
-        println!("Update status: `{}`!", status.version());
+        mem::swap(&mut self.state, &mut state);
         Ok(())
     }
 
@@ -114,7 +112,9 @@ impl<'a> MainState<'a> {
     }
 
     pub fn check_scbank_map(&mut self) -> SCState {
-        self.module.write::<u32>(&self.process, 0xC35B80, 0).unwrap();
+        self.module
+            .write::<u32>(&self.process, 0xBEFB88, 0)
+            .unwrap();
         match self.module.read::<u32>(BUFFER_PTR + 212, &self.process) {
             Ok(value) => {
                 if value == 0x5537F23B {
@@ -155,7 +155,7 @@ impl<'a> event::EventHandler for MainState<'a> {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
+        graphics::clear(ctx, [0.0, 0.0, 0.0, 0.0].into());
 
         let assets = &mut self.assets;
 
@@ -179,12 +179,14 @@ impl<'a> event::EventHandler for MainState<'a> {
         let dst = cgmath::Point2::new(191.0, 22.0);
         graphics::draw(ctx, folder, (dst,))?;
 
-        if self.pos_y >= 22.0 && self.pos_y <= 42.0 {
-            let dst = match self.pos_x {
-                x if x.in_range(128.0, 148.0) => Some(("update", 128.0)),
-                x if x.in_range(149.0, 169.0) => Some(("change_language", 149.0)),
-                x if x.in_range(170.0, 190.0) => Some(("homepage", 170.0)),
-                x if x.in_range(191.0, 211.0) => Some(("open_folder", 191.0)),
+        let mouse = &mut self.mouse_info;
+        let (x, y) = (mouse.x, mouse.y);
+        if y >= 22.0 && y <= 42.0 && x >= 128.0 && x <= 211.0 {
+            let dst = match x {
+                t if t.in_range(128.0, 148.0) => Some(("update", 128.0)),
+                t if t.in_range(149.0, 169.0) => Some(("change_language", 149.0)),
+                t if t.in_range(170.0, 190.0) => Some(("homepage", 170.0)),
+                t if t.in_range(191.0, 211.0) => Some(("open_folder", 191.0)),
                 _ => None,
             };
             match dst {
@@ -192,15 +194,27 @@ impl<'a> event::EventHandler for MainState<'a> {
                     let hover = &mut assets.hover_button;
                     let dst = cgmath::Point2::new(p, 22.0);
                     graphics::draw(ctx, hover, (dst,))?;
+
                     let green = Color::new(0.03, 0.9, 0.03, 1.0);
                     let text = self.get_text(text);
-                    let mut text = Text::new((text, self.font, 12.0));
-                    let txtdst = cgmath::Point2::new(332.0, 25.0);
+                    let (font_size, upper_pos) = match self.locale {
+                        "en-US" => (12.0, 25.0),
+                        _ => (14.0, 24.0),
+                    };
+                    let mut text = Text::new((text, self.font, font_size));
+                    let txtdst = cgmath::Point2::new(332.0, upper_pos);
                     text.set_bounds(cgmath::Point2::new(70.0, f32::INFINITY), Align::Center);
                     graphics::draw(ctx, &text, (txtdst, green))?;
                 }
                 None => (),
             }
+        } else {
+            let tan = Color::new(0.953, 0.851, 0.796, 1.0);
+            let text = format!("v{}\n{}", env!("CARGO_PKG_VERSION"), STARCRAFT_VERSION);
+            let mut text = Text::new((text, self.font, 11.0));
+            let txtdst = cgmath::Point2::new(332.0, 20.0);
+            text.set_bounds(cgmath::Point2::new(70.0, f32::INFINITY), Align::Center);
+            graphics::draw(ctx, &text, (txtdst, tan))?;
         }
 
         let text = match self.state {
@@ -231,14 +245,10 @@ impl<'a> event::EventHandler for MainState<'a> {
         Ok(())
     }
 
-    fn mouse_button_down_event(
-        &mut self,
-        _ctx: &mut Context,
-        _button: MouseButton,
-        x: f32,
-        y: f32,
-    ) {
-        self.mouse_down = true;
+    fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+        let mouse = &mut self.mouse_info;
+        mouse.button = button;
+        mouse.down = true;
         if y >= 22.0 && y <= 42.0 && x >= 128.0 && x <= 211.0 {
             match x {
                 x if x < 148.0 => {
@@ -335,32 +345,50 @@ impl<'a> event::EventHandler for MainState<'a> {
         }
     }
 
-    fn mouse_button_up_event(
-        &mut self,
-        _ctx: &mut Context,
-        _button: MouseButton,
-        _x: f32,
-        _y: f32,
-    ) {
-        self.mouse_down = false;
+    fn mouse_button_up_event(&mut self, _ctx: &mut Context, _button: MouseButton, _x: f32, _y: f32) {
+        let mouse = &mut self.mouse_info;
+        mouse.down = false;
     }
 
-    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _xrel: f32, _yrel: f32) {
-        self.pos_x = x;
-        self.pos_y = y;
+    fn mouse_motion_event(&mut self, ctx: &mut Context, x: f32, y: f32, xrel: f32, yrel: f32) {
+        let mouse = &mut self.mouse_info;
+        if mouse.down
+            && mouse.button == MouseButton::Right
+            && (mouse.x != x || mouse.y != y)
+            && (mouse.x - 2.0 * xrel != x || mouse.y - 2.0 * yrel != y)
+        {
+            let window = graphics::window(ctx);
+            let mut pos = window.get_position().unwrap();
+            pos.x += (2.0 * xrel) as f64;
+            pos.y += (2.0 * yrel) as f64;
+            window.set_position(pos);
+        }
+        mouse.x = x;
+        mouse.y = y;
     }
 }
 
 pub fn main() -> GameResult {
     let resource_dir = path::PathBuf::from("./resources");
     let cb = ContextBuilder::new("SCBank", "Armoha")
-        .window_setup(conf::WindowSetup::default().title(&format!(
-            "SCBank {} (StarCraft: Remastered 1.22.4.5905)",
-            env!("CARGO_PKG_VERSION")
-        )))
-        .window_mode(conf::WindowMode::default().dimensions(480.0, 224.0))
+        .window_setup(
+            conf::WindowSetup::default()
+                .title(&format!(
+                    "SCBank {} (StarCraft: Remastered {})",
+                    env!("CARGO_PKG_VERSION"),
+                    STARCRAFT_VERSION
+                ))
+                .transparent(true),
+        )
+        .window_mode(
+            conf::WindowMode::default()
+                .dimensions(480.0, 224.0)
+                .borderless(true), // TODO: movable window with mouse drag
+        )
         .add_resource_path(resource_dir);
     let (ctx, event_loop) = &mut cb.build()?;
+    let window = graphics::window(ctx);
+    window.set_window_icon(asset::load_icon()?);
 
     let ftl_string = asset::decode_string(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -411,9 +439,12 @@ pub fn main() -> GameResult {
 
     let state = &mut MainState {
         font,
-        mouse_down: false,
-        pos_x: 100.0,
-        pos_y: 100.0,
+        mouse_info: MouseInfo {
+            button: MouseButton::Middle,
+            down: false,
+            x: 100.0,
+            y: 100.0,
+        },
         locale: "ko-KR",
         fluent_bundles: fluent_bundles,
         assets: assets,
