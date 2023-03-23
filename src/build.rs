@@ -3,11 +3,10 @@ use std::io::prelude::*;
 use std::path::Path;
 
 use failure::Error;
-use flate2::{Compression, write::ZlibEncoder};
+use flate2::{write::ZlibEncoder, Compression};
 
 #[cfg(windows)]
 fn add_icon() -> Result<(), Error> {
-    use winres;
     let mut res = winres::WindowsResource::new();
     res.set_icon("resources/SCBank.ico");
     res.compile()?;
@@ -45,9 +44,7 @@ fn compress_assets() -> Result<(), Error> {
     let subfolder = "resources/";
     let cmp = "cmp/";
     for s in &inputs {
-        let output_filename: &str = if &s[0..4] == "raw/" {
-            &s[4..]
-        } else { &s };
+        let output_filename: &str = if &s[0..4] == "raw/" { &s[4..] } else { &s };
         let output_path = &format!("{}{}{}", subfolder, cmp, output_filename);
         let output_path = Path::new(output_path);
         /*match File::open(&output_path) {

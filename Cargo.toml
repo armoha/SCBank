@@ -9,7 +9,7 @@ build = "src/build.rs"
 [dependencies]
 winapi = { version = "^0.3", features = ["std", "everything"] }
 libc = { version = "^0.2", features = ["use_std", "extra_traits"] }
-getset = "^0.0"
+getset = "^0.1.2"
 failure = "^0.1"
 ggez = "0.5.0-rc.2"
 gfx = "0.18"
@@ -21,7 +21,7 @@ image = {version = "0.21", default-features = false, features = ["gif_codec", "j
 webbrowser = "0.5.1"
 fluent = "0.6.0"
 fluent-bundle = "^0.6"
-self_update = "0.5.1"
+self_update = "0.36.0"
 ring = "0.14.6"
 ntp = "0.5"
 time = "0.1.42"
