@@ -16,7 +16,7 @@ gfx = "0.18"
 winit = "0.19.1"
 cgmath = {version = "0.17", features = ["mint"]}
 flate2 = "1.0"
-image = {version = "0.21", default-features = false, features = ["gif_codec", "jpeg", "ico", "png_codec", "pnm",
+image = {version = "0.24.6", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm",
          "tga", "tiff", "webp", "bmp", "dxt", ] }
 webbrowser = "0.5.1"
 fluent = "0.6.0"
