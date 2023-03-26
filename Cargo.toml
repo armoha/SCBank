@@ -18,7 +18,7 @@ cgmath = {version = "0.17", features = ["mint"]}
 flate2 = "1.0"
 image = {version = "0.24.6", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm",
          "tga", "tiff", "webp", "bmp", "dxt", ] }
-webbrowser = "0.5.1"
+webbrowser = "0.8.3"
 fluent = "0.6.0"
 fluent-bundle = "^0.6"
 self_update = "0.36.0"
