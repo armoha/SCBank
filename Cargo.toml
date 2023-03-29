@@ -23,7 +23,7 @@ fluent = "0.6.0"
 fluent-bundle = "^0.6"
 self_update = "0.36.0"
 ring = "0.14.6"
-ntp = "0.5"
+ntp = "0.5"  # TODO: Use ntpd-rs
 time = "0.2.0"
 
 [build-dependencies]
