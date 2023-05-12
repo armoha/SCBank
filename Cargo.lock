@@ -19,7 +19,7 @@ dependencies = [
  "ntp",
  "ring",
  "self_update",
- "time",
+ "time 0.2.0",
  "webbrowser",
  "winapi",
  "winit 0.19.5",
@@ -2279,7 +2279,7 @@ dependencies = [
  "custom_derive",
  "error-chain",
  "log 0.3.9",
- "time",
+ "time 0.1.45",
 ]
 
 [[package]]
@@ -3662,6 +3662,12 @@ dependencies = [
  "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi",
 ]
+
+[[package]]
+name = "time"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc26de0a81a07c8352b548977862908fa9863e0e6e4f0eb36b2a9f4f8845585"
 
 [[package]]
 name = "tiny-skia"
